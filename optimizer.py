@@ -77,45 +77,43 @@ def run_unified_simulation(optimization_vars, asset_names, initial_capital, mont
             kpi_trackers.update({'total_rent_received': kpi_trackers['total_rent_received'] + loyer_annuel, 'total_interest_paid': kpi_trackers['total_interest_paid'] + interets, 'total_rental_tax': kpi_trackers['total_rental_tax'] + impot_locatif})
             historique.loc[year, 'Soutien Épargne Immo'] = max(0, -net_immo_cash_flow)
         
-        cash_for_investment = annual_savings
-        if 'Assurance-Vie' in patrimoine:
-            patrimoine['Assurance-Vie'] += net_immo_cash_flow
-            if patrimoine['Assurance-Vie'] < 0:
-                cash_for_investment += patrimoine['Assurance-Vie']
-                patrimoine['Assurance-Vie'] = 0
-        elif net_immo_cash_flow < 0:
-            cash_for_investment += net_immo_cash_flow
-        elif net_immo_cash_flow > 0:
-            kpi_trackers['leaked_cash'] += net_immo_cash_flow
-
+        cash_for_investment = annual_savings + net_immo_cash_flow
         if cash_for_investment < 0:
             penalty += abs(cash_for_investment) * 2; cash_for_investment = 0
             event_logs.append(f"⚠️ Année {year}: Épargne mensuelle insuffisante pour couvrir le déficit immobilier.")
-        
-        # Logique d'investissement
-        intended_per_flow = cash_for_investment * allocation.get('PER', 0)
-        actual_per_contribution = min(intended_per_flow, per_deduction_limit) if 'PER' in allocation else 0
-        surplus = intended_per_flow - actual_per_contribution
-        if surplus > 0:
-            if 'Assurance-Vie' in patrimoine: patrimoine['Assurance-Vie'] += surplus
-            else: kpi_trackers['leaked_cash'] += surplus
-        
-        tax_saving = 0
-        if actual_per_contribution > 0:
-            tax_saving = actual_per_contribution * (marginal_tax_rate / 100)
-            kpi_trackers['total_tax_saving_per'] += tax_saving
-            if 'Assurance-Vie' in patrimoine: patrimoine['Assurance-Vie'] += tax_saving
-            else: kpi_trackers['leaked_cash'] += tax_saving
 
-        for asset, weight in allocation.items():
-            flow_amount = cash_for_investment * weight
-            if asset == 'PER': 
-                flow_amount = actual_per_contribution
-            if asset in patrimoine:
-                frais_entree = df_options_financiers.loc[asset, 'Frais Entrée (%)']/100
-                patrimoine[asset] += flow_amount * (1 - frais_entree)
-                historique.loc[year, f"Flux {asset}"] = flow_amount
+        per_weight = allocation.get('PER', 0)
+        total_invested_this_year = cash_for_investment
+        if per_weight > 0.001 and total_invested_this_year * per_weight > per_deduction_limit:
+            total_invested_this_year = per_deduction_limit / per_weight
         
+        per_contribution_this_year = total_invested_this_year * per_weight
+        
+        for asset, weight in allocation.items():
+            flow_amount = total_invested_this_year * weight
+            patrimoine[asset] += flow_amount * (1 - df_options_financiers.loc[asset, 'Frais Entrée (%)']/100)
+            historique.loc[year, f"Flux {asset}"] = flow_amount
+
+        tax_saving = 0
+        if per_contribution_this_year > 0:
+            tax_saving = per_contribution_this_year * (marginal_tax_rate / 100)
+            kpi_trackers['total_tax_saving_per'] += tax_saving
+            if tax_saving > 0:
+                reinvested_tax_saving = 0
+                for asset, weight in allocation.items():
+                    reinvestment_amount = tax_saving * weight
+                    current_per_total = historique.loc[year, "Flux PER"] if "Flux PER" in historique.columns else 0
+                    if asset == 'PER' and current_per_total + reinvestment_amount > per_deduction_limit:
+                       reinvestment_amount = max(0, per_deduction_limit - current_per_total)
+                    
+                    patrimoine[asset] += reinvestment_amount * (1 - (df_options_financiers.loc[asset, 'Frais Entrée (%)']/100))
+                    if f"Flux {asset}" in historique.columns:
+                        historique.loc[year, f"Flux {asset}"] += reinvestment_amount
+                    reinvested_tax_saving += reinvestment_amount
+                
+                if tax_saving > reinvested_tax_saving:
+                    kpi_trackers['leaked_cash'] += (tax_saving - reinvested_tax_saving)
+
         for col in patrimoine: historique.loc[year, col] = patrimoine.get(col, 0)
         historique.loc[year, 'Dette Immobilière'] = -loan_crd
         historique.loc[year, 'Total Net'] = sum(patrimoine.values()) - loan_crd
@@ -127,14 +125,14 @@ def objective_function(optimization_vars, *args):
     final_net_worth, _, _, _, _, _ = run_unified_simulation(optimization_vars, *args)
     return -final_net_worth
 
-# --- INTERFACE ---
+# --- INTERFACE UTILISATEUR ---
 st.sidebar.title("👨‍💼 Vos Paramètres")
 st.sidebar.header("Situation Initiale")
 initial_capital = st.sidebar.number_input("Capital de départ (€)", 0, value=20000, step=1000)
 monthly_investment = st.sidebar.number_input("Épargne mensuelle (€)", 0, value=500, step=50)
 investment_horizon = st.sidebar.slider("Horizon de temps (années)", 5, 40, 20, 1)
 st.sidebar.header("Fiscalité")
-marginal_tax_rate = st.sidebar.slider("TMI (%)", 0, 45, 30, 5)
+marginal_tax_rate = st.sidebar.selectbox("Taux Marginal d'Imposition (TMI) (%)", options=[0, 11, 30, 41, 45], index=2)
 per_deduction_limit = st.sidebar.number_input("Plafond Annuel PER (€)", 0, value=4399, step=100)
 st.sidebar.header("Sélection des Investissements")
 df_options_financiers = pd.DataFrame({'Actif': [True, True, True], 'Rendement Annuel (%)': [3.5, 4.0, 4.5], 'Frais Entrée (%)': [1.0, 2.0, 5.0], 'Frais Gestion Annuels (%)': [0.6, 0.8, 0.5]}, index=["Assurance-Vie", "PER", "SCPI"])
@@ -165,14 +163,11 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
                 num_alloc_vars = len(asset_names)
                 initial_guess = np.array([1.0/num_alloc_vars if num_alloc_vars > 0 else 0.0]*num_alloc_vars + [np.mean(immo_price_range)])
                 bounds = ([(0,1)]*num_alloc_vars if num_alloc_vars > 0 else []) + [immo_price_range]
-                
                 def check_mensualite(x): return loan_params['mensualite_max'] - calculate_monthly_payment(x[-1], loan_params['rate'], loan_params['duration'])
-                
                 constraints = []
                 if num_alloc_vars > 0:
                     constraints.append({'type': 'eq', 'fun': lambda x: 1 - np.sum(x[:-1])})
                 constraints.append({'type': 'ineq', 'fun': check_mensualite})
-                
                 args = (asset_names, initial_capital, monthly_investment, investment_horizon, df_options_for_optim, immo_params, loan_params, marginal_tax_rate, per_deduction_limit)
             else:
                 num_alloc_vars = len(asset_names)
@@ -188,7 +183,7 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
             with st.expander("Voir le journal de l'optimiseur", expanded=not opt_result.success):
                 st.text(f"Message de l'optimiseur : {opt_result.message}")
                 st.text(f"Convergence réussie : {opt_result.success}")
-            
+
             if opt_result.success:
                 optimal_vars = opt_result.x
                 _, final_patrimoine, final_crd, historique, event_logs, kpis = run_unified_simulation(optimal_vars, *args)
@@ -210,7 +205,7 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
                 
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Plus-Value Nette Totale", f"{final_net_worth - total_invested:,.0f} €")
-                col2.metric("Total des Versements", f"{total_invested:,.0f} €")
+                col2.metric("Total des Versements (Capital + Épargne)", f"{total_invested:,.0f} €")
                 col3.metric("Rendement Annuel Moyen (TRI)", f"{irr:.2%}")
                 
                 st.subheader("Détails de la Stratégie Optimale")
