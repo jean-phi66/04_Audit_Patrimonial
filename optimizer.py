@@ -127,10 +127,10 @@ def objective_function(optimization_vars, *args):
 
 # --- INTERFACE UTILISATEUR ---
 st.sidebar.title("👨‍💼 Vos Paramètres")
+investment_horizon = st.sidebar.slider("Horizon de temps (années)", 5, 40, 20, 1)
 st.sidebar.header("Situation Initiale")
 initial_capital = st.sidebar.number_input("Capital de départ (€)", 0, value=20000, step=1000)
 monthly_investment = st.sidebar.number_input("Épargne mensuelle (€)", 0, value=500, step=50)
-investment_horizon = st.sidebar.slider("Horizon de temps (années)", 5, 40, 20, 1)
 st.sidebar.header("Fiscalité")
 marginal_tax_rate = st.sidebar.selectbox("Taux Marginal d'Imposition (TMI) (%)", options=[0, 11, 30, 41, 45], index=2)
 per_deduction_limit = st.sidebar.number_input("Plafond Annuel PER (€)", 0, value=4399, step=100)
