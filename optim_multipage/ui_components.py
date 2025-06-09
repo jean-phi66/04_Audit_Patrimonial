@@ -1,4 +1,4 @@
-# Fichier: ui_components.py (version finale corrigée)
+# Fichier: ui_components.py (version mise à jour pour simulation manuelle)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -14,22 +14,72 @@ def setup_sidebar():
     initial_capital = st.sidebar.number_input("Capital de départ (€)", 0, value=20000, step=1000)
     monthly_investment = st.sidebar.number_input("Épargne mensuelle (€)", 0, value=500, step=50)
     investment_horizon = st.sidebar.slider("Horizon de temps (années)", 5, 40, 20, 1)
+
     st.sidebar.header("Fiscalité")
     marginal_tax_rate = st.sidebar.selectbox("Taux Marginal d'Imposition (TMI) (%)", options=[0, 11, 30, 41, 45], index=2)
     per_deduction_limit = st.sidebar.number_input("Plafond Annuel PER (€)", 0, value=4399, step=100)
+
     st.sidebar.header("Sélection des Investissements")
-    df_options_financiers = pd.DataFrame({'Actif': [True, True, True],'Rendement Annuel (%)': [3.5, 4.0, 4.5],'Frais Entrée (%)': [1.0, 2.0, 5.0],'Frais Gestion Annuels (%)': [0.6, 0.8, 0.5]}, index=["Assurance-Vie", "PER", "SCPI"])
-    df_options_financiers_edited = st.sidebar.data_editor(df_options_financiers,column_config={"Actif": st.column_config.CheckboxColumn("Activer ?", default=True)})
+    df_options_financiers = pd.DataFrame(
+        {'Actif': [True, True, True],
+         'Rendement Annuel (%)': [3.5, 4.0, 4.5],
+         'Frais Entrée (%)': [1.0, 2.0, 5.0],
+         'Frais Gestion Annuels (%)': [0.6, 0.8, 0.5]},
+        index=["Assurance-Vie", "PER", "SCPI"]
+    )
+    df_options_financiers_edited = st.sidebar.data_editor(
+        df_options_financiers,
+        column_config={"Actif": st.column_config.CheckboxColumn("Activer ?", default=True)}
+    )
+
     include_immo = st.sidebar.checkbox("Inclure un projet immobilier (achat en Année 1 sans apport)", value=True)
+
     st.sidebar.header("Hypothèses Projet Immobilier")
     fix_immo_price = st.checkbox("Fixer le prix du bien immobilier", value=False, disabled=not include_immo)
     fixed_immo_price = st.number_input("Prix fixe du bien (€)", 0, 2000000, 150000, 1000, disabled=not (include_immo and fix_immo_price))
     immo_price_range = st.slider("Fourchette de prix du bien (€)", 0, 1000000, (0, 150000), step=10000, disabled=not include_immo or fix_immo_price)
     loan_params = {'mensualite_max': st.sidebar.number_input("Mensualité max de prêt (€)", 50, 5000, 1000, 50, disabled=not include_immo)}
-    immo_params = {'rendement_locatif_brut': st.sidebar.slider("Rdt Locatif Brut (%)", 2.0, 8.0, 5.0, 0.1, disabled=not include_immo),'charges_pct': st.sidebar.slider("Charges annuelles (% loyer)", 0, 30, 15, 1, disabled=not include_immo),'frais_notaire_pct': st.sidebar.slider("Frais d'acquisition (%)", 5.0, 12.0, 8.0, 0.5, disabled=not include_immo),'immo_reval_rate': st.sidebar.slider("Reval. annuelle du bien (%)", -2.0, 5.0, 1.5, 0.1, disabled=not include_immo)}
-    loan_params.update({'rate': st.sidebar.slider("Taux crédit immo (%)", 1.0, 6.0, 3.5, 0.1, disabled=not include_immo),'duration': st.sidebar.slider("Durée crédit (ans)", 10, 25, 20, 1, disabled=not include_immo)})
-    return {"initial_capital": initial_capital,"monthly_investment": monthly_investment,"investment_horizon": investment_horizon,"marginal_tax_rate": marginal_tax_rate,"per_deduction_limit": per_deduction_limit,"df_options_financiers_edited": df_options_financiers_edited,"include_immo": include_immo,"loan_params": loan_params,"immo_price_range": immo_price_range,"immo_params": immo_params,"fix_immo_price": fix_immo_price,"fixed_immo_price": fixed_immo_price}
+    immo_params = {
+        'rendement_locatif_brut': st.sidebar.slider("Rdt Locatif Brut (%)", 2.0, 8.0, 5.0, 0.1, disabled=not include_immo),
+        'charges_pct': st.sidebar.slider("Charges annuelles (% loyer)", 0, 30, 15, 1, disabled=not include_immo),
+        'frais_notaire_pct': st.sidebar.slider("Frais d'acquisition (%)", 5.0, 12.0, 8.0, 0.5, disabled=not include_immo),
+        'immo_reval_rate': st.sidebar.slider("Reval. annuelle du bien (%)", -2.0, 5.0, 1.5, 0.1, disabled=not include_immo)
+    }
+    loan_params.update({
+        'rate': st.sidebar.slider("Taux crédit immo (%)", 1.0, 6.0, 3.5, 0.1, disabled=not include_immo),
+        'duration': st.sidebar.slider("Durée crédit (ans)", 10, 25, 20, 1, disabled=not include_immo)
+    })
 
+    # <<< AJOUT : Section pour l'allocation manuelle >>>
+    st.sidebar.header("Allocation Manuelle (pour Simulation)")
+    st.sidebar.caption("Utilisez ces sliders pour définir une stratégie manuelle, puis cliquez sur 'Lancer la Simulation Manuelle'.")
+    
+    active_financial_assets = df_options_financiers_edited[df_options_financiers_edited['Actif']].index.tolist()
+    manual_allocations = {}
+    if active_financial_assets:
+        for asset in active_financial_assets:
+            manual_allocations[asset] = st.sidebar.slider(f"Allocation {asset} (%)", 0, 100, 100 // len(active_financial_assets), 1)
+    else:
+        st.sidebar.info("Aucun actif financier sélectionné.")
+    # <<< FIN DE L'AJOUT >>>
+
+    return {
+        "initial_capital": initial_capital,
+        "monthly_investment": monthly_investment,
+        "investment_horizon": investment_horizon,
+        "marginal_tax_rate": marginal_tax_rate,
+        "per_deduction_limit": per_deduction_limit,
+        "df_options_financiers_edited": df_options_financiers_edited,
+        "include_immo": include_immo,
+        "loan_params": loan_params,
+        "immo_price_range": immo_price_range,
+        "immo_params": immo_params,
+        "fix_immo_price": fix_immo_price,
+        "fixed_immo_price": fixed_immo_price,
+        "manual_allocations": manual_allocations # <<< AJOUT : On retourne les allocations manuelles
+    }
+
+# Le reste du fichier (display_results, etc.) ne change pas.
 def display_results(opt_result, simulation_args):
     st.subheader("📊 Résultat de la Stratégie")
     with st.expander("Voir le journal de l'optimiseur", expanded=not opt_result.success):
