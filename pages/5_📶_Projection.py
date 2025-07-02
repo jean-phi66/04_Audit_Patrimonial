@@ -234,54 +234,6 @@ if 'tableau_financier' in st.session_state and st.session_state.tableau_financie
         st.subheader("Journal des Événements de la Simulation")
         for log in st.session_state.logs_evenements:
             st.markdown(f"- {log}")
-
-    st.subheader("Analyse des Flux Annuels")
-    df_plot_flux = dfp.copy()
-    # Pour avoir le Reste à Vivre en bas, il doit être le premier dans la liste y
-    # et on s'assure qu'il est positif pour un empilement correct.
-    # Si le Reste à Vivre peut être négatif, un graphique en cascade serait plus adapté,
-    # mais pour un empilement simple, on le traite comme une composante positive.
-    fig_stacked_flux = px.bar(
-        df_plot_flux,
-        x="Année",
-        y=["Reste à Vivre", "Charges (hors prêts)", "Mensualités Prêts", "Impôt sur le Revenu"],
-        title="Répartition du Revenu Annuel (depuis le Reste à Vivre)",
-        labels={"value": "Montant Annuel (€)", "variable": "Poste"},
-        color_discrete_map={
-            "Reste à Vivre": "mediumseagreen",
-            "Charges (hors prêts)": "lightcoral", # Ajustement couleur pour contraste
-            "Mensualités Prêts": "sandybrown",  # Ajustement couleur pour contraste
-            "Impôt sur le Revenu": "khaki" # Ajustement couleur pour contraste
-        }
-    )
-    st.plotly_chart(fig_stacked_flux, use_container_width=True)
-
-    # Graphique pour les réductions fiscales
-    if 'Réduction Fiscale Annuelle' in dfp.columns and dfp['Réduction Fiscale Annuelle'].sum() > 0:
-        fig_reduction = px.bar(
-            dfp,
-            x='Année',
-            y='Réduction Fiscale Annuelle',
-            title="Évolution des Réductions Fiscales Annuelles (Pinel, etc.)",
-            labels={"Réduction Fiscale Annuelle": "Montant de la Réduction (€)"},
-        )
-        fig_reduction.update_traces(marker_color='teal')
-        st.plotly_chart(fig_reduction, use_container_width=True)
-
-    # Graphique pour le cumul de la fiscalité
-    if 'Impôt sur le Revenu' in df_plot_flux.columns:
-        df_plot_flux['Impôt Cumulé'] = df_plot_flux['Impôt sur le Revenu'].cumsum()
-        fig_impot_cumule = px.area(
-            df_plot_flux,
-            x='Année',
-            y='Impôt Cumulé',
-            title="Évolution du Cumul de la Fiscalité Payée",
-            labels={"Impôt Cumulé": "Total Impôts Payés (cumulé) (€)"},
-            markers=True
-        )
-        fig_impot_cumule.update_traces(fillcolor='rgba(239, 83, 80, 0.3)', line_color='rgba(239, 83, 80, 1.0)')
-        st.plotly_chart(fig_impot_cumule, use_container_width=True)
-
     # Nouveau graphique pour l'évolution des statuts
     st.subheader("Évolution des Statuts des Membres du Foyer")
     statuts_cols = [col for col in dfp.columns if col.endswith('_Statut')]
@@ -372,6 +324,54 @@ if 'tableau_financier' in st.session_state and st.session_state.tableau_financie
             st.plotly_chart(fig_statuts_evolution, use_container_width=True)
         else:
             st.info("Aucune donnée de période de statut n'a pu être générée pour la chronologie (timeline_data est vide).")
+    st.subheader("Analyse des Flux Annuels")
+    df_plot_flux = dfp.copy()
+    # Pour avoir le Reste à Vivre en bas, il doit être le premier dans la liste y
+    # et on s'assure qu'il est positif pour un empilement correct.
+    # Si le Reste à Vivre peut être négatif, un graphique en cascade serait plus adapté,
+    # mais pour un empilement simple, on le traite comme une composante positive.
+    fig_stacked_flux = px.bar(
+        df_plot_flux,
+        x="Année",
+        y=["Reste à Vivre", "Charges (hors prêts)", "Mensualités Prêts", "Impôt sur le Revenu"],
+        title="Répartition du Revenu Annuel (depuis le Reste à Vivre)",
+        labels={"value": "Montant Annuel (€)", "variable": "Poste"},
+        color_discrete_map={
+            "Reste à Vivre": "mediumseagreen",
+            "Charges (hors prêts)": "lightcoral", # Ajustement couleur pour contraste
+            "Mensualités Prêts": "sandybrown",  # Ajustement couleur pour contraste
+            "Impôt sur le Revenu": "khaki" # Ajustement couleur pour contraste
+        }
+    )
+    st.plotly_chart(fig_stacked_flux, use_container_width=True)
+
+    # Graphique pour les réductions fiscales
+    if 'Réduction Fiscale Annuelle' in dfp.columns and dfp['Réduction Fiscale Annuelle'].sum() > 0:
+        fig_reduction = px.bar(
+            dfp,
+            x='Année',
+            y='Réduction Fiscale Annuelle',
+            title="Évolution des Réductions Fiscales Annuelles (Pinel, etc.)",
+            labels={"Réduction Fiscale Annuelle": "Montant de la Réduction (€)"},
+        )
+        fig_reduction.update_traces(marker_color='teal')
+        st.plotly_chart(fig_reduction, use_container_width=True)
+
+    # Graphique pour le cumul de la fiscalité
+    if 'Impôt sur le Revenu' in df_plot_flux.columns:
+        df_plot_flux['Impôt Cumulé'] = df_plot_flux['Impôt sur le Revenu'].cumsum()
+        fig_impot_cumule = px.area(
+            df_plot_flux,
+            x='Année',
+            y='Impôt Cumulé',
+            title="Évolution du Cumul de la Fiscalité Payée",
+            labels={"Impôt Cumulé": "Total Impôts Payés (cumulé) (€)"},
+            markers=True
+        )
+        fig_impot_cumule.update_traces(fillcolor='rgba(239, 83, 80, 0.3)', line_color='rgba(239, 83, 80, 1.0)')
+        st.plotly_chart(fig_impot_cumule, use_container_width=True)
+
+
 
     st.subheader("Tableau des Flux Annuels")
 

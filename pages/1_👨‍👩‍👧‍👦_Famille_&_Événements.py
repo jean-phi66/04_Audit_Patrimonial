@@ -26,12 +26,13 @@ with col1:
                     horizontal=True
                 )
             with col_a2:
+                # Récupérer la date de naissance existante pour la préserver
+                date_naissance = row.get('Date Naissance') if pd.notna(row.get('Date Naissance')) else None
 
                 if age_input_method == "Âge":
                     age_adulte = st.number_input("Âge", value=int(row.get('Âge', 0)) if pd.notna(row.get('Âge')) else 0, min_value=0, step=1, key=f"adult_age_{i}")
-                    date_naissance = None
                 else:
-                    date_naissance = st.date_input("Date de Naissance", value=row.get('Date Naissance') if pd.notna(row.get('Date Naissance')) else None, key=f"adult_naissance_{i}")
+                    date_naissance = st.date_input("Date de Naissance", value=date_naissance, key=f"adult_naissance_{i}")
                     age_adulte = datetime.now().year - date_naissance.year if date_naissance else 0
 
             with col_a3:
@@ -81,11 +82,13 @@ with col2:
                     horizontal=True
                 )
             with col_e2:
+                # Récupérer la date de naissance existante pour la préserver
+                date_naissance_enfant = row.get('Date Naissance') if pd.notna(row.get('Date Naissance')) else None
+
                 if age_input_method_enfant == "Âge":
                     age_enfant = st.number_input("Âge", value=int(row.get('Âge', 0)) if pd.notna(row.get('Âge')) else 0, min_value=0, step=1, key=f"enfant_age_{i}")
-                    date_naissance_enfant = None
                 else:
-                    date_naissance_enfant = st.date_input("Date de Naissance", value=row.get('Date Naissance') if pd.notna(row.get('Date Naissance')) else None, key=f"enfant_naissance_{i}")
+                    date_naissance_enfant = st.date_input("Date de Naissance", value=date_naissance_enfant, key=f"enfant_naissance_{i}")
                     age_enfant = datetime.now().year - date_naissance_enfant.year if date_naissance_enfant else 0
             with col_e3:
                 age_debut_etudes = st.number_input("Âge Début Études", value=int(row.get('Âge Début Études', 0)) if pd.notna(row.get('Âge Début Études')) else 0, min_value=0, step=1, key=f"enfant_age_debut_etudes_{i}")
