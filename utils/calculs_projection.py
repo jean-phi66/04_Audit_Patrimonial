@@ -1,4 +1,4 @@
-# utils/calculs_projection.py (refactorisé)
+# utils/calculs_projection.py (refactorisé et corrigé)
 import pandas as pd
 from datetime import datetime
 from .openfisca_utils import calculer_impot_openfisca
@@ -69,12 +69,9 @@ def _gerer_ventes_immobilieres(annee, ventes_df, sim_patrimoine, historique_acha
         
     return sim_patrimoine, cash_flow_exceptionnel, echeanciers, logs
 
-# --- DÉBUT DE LA SECTION REFACTORISÉE ---
-
 def _calculer_revenus_et_statuts_adultes(annee, adultes_df_sim, sim_revenus, df_pension_hypotheses, indices_salaires):
     """
     Calcule les revenus (salaires, pensions) et détermine le statut de chaque adulte pour une année donnée.
-    Cette fonction isole la logique de calcul des revenus personnels.
     """
     salaires_annuels = 0
     pensions_annuelles = 0
@@ -86,7 +83,6 @@ def _calculer_revenus_et_statuts_adultes(annee, adultes_df_sim, sim_revenus, df_
         revenu_adulte_annee = 0
         statut_adulte = "Actif"
 
-        # Vérifier si l'adulte est à la retraite en fonction des hypothèses fournies
         est_retraite = False
         if not df_pension_hypotheses.empty:
             hypothese_retraite = df_pension_hypotheses[
@@ -102,7 +98,6 @@ def _calculer_revenus_et_statuts_adultes(annee, adultes_df_sim, sim_revenus, df_
                 pensions_annuelles += pension
                 statut_adulte = "Retraité"
 
-        # Si l'adulte n'est pas à la retraite, on calcule son salaire
         if not est_retraite:
             if i < len(indices_salaires):
                 idx_salaire = indices_salaires[i]
@@ -121,7 +116,6 @@ def _calculer_revenus_et_statuts_adultes(annee, adultes_df_sim, sim_revenus, df_
 def _calculer_depenses_et_statuts_enfants(annee, enfants_df_sim):
     """
     Calcule les dépenses d'études et détermine le statut de chaque enfant pour une année donnée.
-    Cette fonction isole la logique liée aux enfants.
     """
     depenses_etudes = 0
     enfants_a_charge_details = []
@@ -144,7 +138,6 @@ def _calculer_depenses_et_statuts_enfants(annee, enfants_df_sim):
             
             statuts_enfants[nom_enfant] = statut_enfant
 
-            # Un enfant est considéré à charge pour le calcul d'impôt s'il n'a pas fini ses études
             if annee < enfant['Année Fin Études']:
                 enfants_a_charge_details.append(enfant.to_dict())
     
@@ -156,7 +149,6 @@ def _calculer_autres_flux(sim_revenus, charges_courantes_df):
     """
     loyers_locatifs = sim_revenus[sim_revenus['Poste'] == 'Revenus Locatifs (calculé)']['Montant Annuel'].sum()
     
-    # Exclut les salaires (traités ailleurs) et les revenus locatifs déjà calculés
     autres_revenus = sim_revenus[
         (~sim_revenus['Poste'].str.contains('Salaire', na=False)) &
         (sim_revenus['Poste'] != 'Revenus Locatifs (calculé)')
@@ -169,30 +161,20 @@ def _calculer_autres_flux(sim_revenus, charges_courantes_df):
 def _calculer_flux_annuels(annee, adultes_df_sim, enfants_df_sim, sim_revenus, charges_courantes_df, df_pension_hypotheses, indices_salaires):
     """
     Orchestre le calcul des revenus et dépenses pour une année.
-    Cette fonction est maintenant plus simple et délègue les calculs complexes à des sous-fonctions.
-    Elle retourne un dictionnaire structuré pour une meilleure lisibilité.
     """
-    # 1. Calculer les revenus et statuts des adultes
     salaires, pensions, adultes_details, statuts_adultes = _calculer_revenus_et_statuts_adultes(
         annee, adultes_df_sim, sim_revenus, df_pension_hypotheses, indices_salaires
     )
-
-    # 2. Calculer les dépenses et statuts des enfants
     depenses_etudes, enfants_details, statuts_enfants = _calculer_depenses_et_statuts_enfants(
         annee, enfants_df_sim
     )
-
-    # 3. Calculer les autres revenus (locatifs, etc.) et les charges de base
     loyers, autres_revs, charges_base = _calculer_autres_flux(
         sim_revenus, charges_courantes_df
     )
-
-    # 4. Agréger les résultats
     total_revenus = salaires + pensions + loyers + autres_revs
     total_depenses = charges_base + depenses_etudes
     statuts_annee = {**statuts_adultes, **statuts_enfants}
 
-    # 5. Retourner un dictionnaire structuré pour plus de clarté
     return {
         "total_revenus": total_revenus,
         "salaires": salaires,
@@ -204,8 +186,6 @@ def _calculer_flux_annuels(annee, adultes_df_sim, enfants_df_sim, sim_revenus, c
         "enfants_details": enfants_details,
         "statuts_annee": statuts_annee
     }
-
-# --- FIN DE LA SECTION REFACTORISÉE ---
 
 def _calculer_paiements_prets_annuels(annee, echeanciers, prets_df, asset_to_type_map):
     """Calcule les mensualités et le passif total pour une année, ventilé par type d'actif."""
@@ -296,9 +276,8 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
     echeanciers = {idx: generer_tableau_amortissement(p['Montant Initial'], p['Taux Annuel %'], p['Durée Initiale (ans)'], pd.to_datetime(p['Date Début']), p.get('Assurance Emprunteur %', 0)) for idx, p in prets_df.iterrows()}
     
     adultes_df_sim, enfants_df_sim = _preparer_donnees_initiales(adultes_df, enfants_df, annee_actuelle)
-    sim_revenus, sim_patrimoine, charges_courantes_df = revenus_df.copy(), stocks_df.copy(), depenses_df.copy()
+    sim_revenus_base, sim_patrimoine, charges_courantes_df = revenus_df.copy(), stocks_df.copy(), depenses_df.copy()
     historique_achat = stocks_df[['Actif', 'Prix Achat Initial', 'Date Achat', 'Type']].copy()
-    indices_salaires = sim_revenus[sim_revenus['Poste'].str.contains('Salaire', na=False)].index.tolist()
     
     projection_data, logs_evenements = [], []
 
@@ -306,8 +285,20 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
         sim_patrimoine, cash_flow_vente, echeanciers, logs_vente = _gerer_ventes_immobilieres(annee, ventes_df, sim_patrimoine, historique_achat, echeanciers, prets_df)
         logs_evenements.extend(logs_vente)
         
-        # Appel à la fonction refactorisée qui retourne un dictionnaire
-        flux = _calculer_flux_annuels(annee, adultes_df_sim, enfants_df_sim, sim_revenus, charges_courantes_df, df_pension_hypotheses, indices_salaires)
+        sim_revenus_annee = sim_revenus_base.copy()
+        
+        df_immobilier_productif_actuel = sim_patrimoine[sim_patrimoine['Type'] == 'Immobilier productif']
+        total_loyers_annuels_actuel = 0
+        if not df_immobilier_productif_actuel.empty and 'Loyer Mensuel Brut (€)' in df_immobilier_productif_actuel.columns:
+            total_loyers_annuels_actuel = (pd.to_numeric(df_immobilier_productif_actuel['Loyer Mensuel Brut (€)'], errors='coerce').fillna(0) * 12).sum()
+
+        if total_loyers_annuels_actuel > 0:
+            ligne_loyers = pd.DataFrame([{'Poste': 'Revenus Locatifs (calculé)', 'Montant Annuel': total_loyers_annuels_actuel}])
+            sim_revenus_annee = pd.concat([sim_revenus_annee, ligne_loyers], ignore_index=True)
+        
+        indices_salaires_annee = sim_revenus_annee[sim_revenus_annee['Poste'].str.contains('Salaire', na=False)].index.tolist()
+        
+        flux = _calculer_flux_annuels(annee, adultes_df_sim, enfants_df_sim, sim_revenus_annee, charges_courantes_df, df_pension_hypotheses, indices_salaires_annee)
         
         mensualites_prets, passif_total, passif_jouissance, passif_productif = _calculer_paiements_prets_annuels(annee, echeanciers, prets_df, asset_to_type_map)
         
@@ -335,9 +326,8 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
         }
         projection_data.append(donnees_annee)
 
-        # Préparation de l'année suivante
         charges_courantes_df['Montant Annuel'] *= inflation_factor
-        sim_revenus.loc[~sim_revenus['Poste'].str.contains('Salaire', na=False), 'Montant Annuel'] *= inflation_factor
+        sim_revenus_base.loc[~sim_revenus_base['Poste'].str.contains('Salaire', na=False), 'Montant Annuel'] *= inflation_factor
         
         for i, (_, adulte_sim) in enumerate(adultes_df_sim.iterrows()):
             est_retraite_annee_suivante = False
@@ -345,8 +335,9 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
                 if not df_pension_hypotheses[(df_pension_hypotheses['Prénom Adulte'] == adulte_sim['Prénom']) & (df_pension_hypotheses['Active'] == True) & (df_pension_hypotheses['Année Départ Retraite'] <= annee + 1)].empty:
                     est_retraite_annee_suivante = True
             
-            if i < len(indices_salaires):
-                idx_salaire = indices_salaires[i]
-                sim_revenus.loc[idx_salaire, 'Montant Annuel'] = 0 if est_retraite_annee_suivante else sim_revenus.loc[idx_salaire, 'Montant Annuel'] * revalo_salaire_factor
+            indices_salaires_base = sim_revenus_base[sim_revenus_base['Poste'].str.contains('Salaire', na=False)].index.tolist()
+            if i < len(indices_salaires_base):
+                idx_salaire = indices_salaires_base[i]
+                sim_revenus_base.loc[idx_salaire, 'Montant Annuel'] = 0 if est_retraite_annee_suivante else sim_revenus_base.loc[idx_salaire, 'Montant Annuel'] * revalo_salaire_factor
 
     return pd.DataFrame(projection_data), logs_evenements

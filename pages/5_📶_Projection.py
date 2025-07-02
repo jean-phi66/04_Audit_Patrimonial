@@ -191,23 +191,24 @@ if lancer_projection:
         df_revenus_for_projection = st.session_state.df_revenus.copy()
 
         # Calculate rental income from df_stocks
-        total_loyers_annuels = 0
-        if 'df_stocks' in st.session_state and not st.session_state.df_stocks.empty:
-            df_immobilier_productif = st.session_state.df_stocks[st.session_state.df_stocks['Type'] == 'Immobilier productif'].copy()
-            if 'Loyer Mensuel Brut (€)' in df_immobilier_productif.columns:
-                df_immobilier_productif['Loyer Mensuel Brut (€)'] = pd.to_numeric(df_immobilier_productif['Loyer Mensuel Brut (€)'], errors='coerce').fillna(0)
-                total_loyers_annuels = (df_immobilier_productif['Loyer Mensuel Brut (€)'] * 12).sum()
-            
-        if total_loyers_annuels > 0:
-            # Check if 'Revenus Locatifs (calculé)' already exists to avoid duplicates
-            if 'Revenus Locatifs (calculé)' in df_revenus_for_projection['Poste'].values:
-                df_revenus_for_projection.loc[df_revenus_for_projection['Poste'] == 'Revenus Locatifs (calculé)', 'Montant Annuel'] = total_loyers_annuels
+        if(False):
+            total_loyers_annuels = 0
+            if 'df_stocks' in st.session_state and not st.session_state.df_stocks.empty:
+                df_immobilier_productif = st.session_state.df_stocks[st.session_state.df_stocks['Type'] == 'Immobilier productif'].copy()
+                if 'Loyer Mensuel Brut (€)' in df_immobilier_productif.columns:
+                    df_immobilier_productif['Loyer Mensuel Brut (€)'] = pd.to_numeric(df_immobilier_productif['Loyer Mensuel Brut (€)'], errors='coerce').fillna(0)
+                    total_loyers_annuels = (df_immobilier_productif['Loyer Mensuel Brut (€)'] * 12).sum()
+                
+            if total_loyers_annuels > 0:
+                # Check if 'Revenus Locatifs (calculé)' already exists to avoid duplicates
+                if 'Revenus Locatifs (calculé)' in df_revenus_for_projection['Poste'].values:
+                    df_revenus_for_projection.loc[df_revenus_for_projection['Poste'] == 'Revenus Locatifs (calculé)', 'Montant Annuel'] = total_loyers_annuels
+                else:
+                    new_loyer_row = pd.DataFrame([{'Poste': 'Revenus Locatifs (calculé)', 'Montant Annuel': total_loyers_annuels}])
+                    df_revenus_for_projection = pd.concat([df_revenus_for_projection, new_loyer_row], ignore_index=True)
             else:
-                new_loyer_row = pd.DataFrame([{'Poste': 'Revenus Locatifs (calculé)', 'Montant Annuel': total_loyers_annuels}])
-                df_revenus_for_projection = pd.concat([df_revenus_for_projection, new_loyer_row], ignore_index=True)
-        else:
-            # If no rental income, ensure the row is removed if it exists
-            df_revenus_for_projection = df_revenus_for_projection[df_revenus_for_projection['Poste'] != 'Revenus Locatifs (calculé)']
+                # If no rental income, ensure the row is removed if it exists
+                df_revenus_for_projection = df_revenus_for_projection[df_revenus_for_projection['Poste'] != 'Revenus Locatifs (calculé)']
 
         # S'assurer que les hypothèses d'inflation et de revalorisation des salaires sont à 0
         # pour cette projection, suite à la suppression des sliders.
