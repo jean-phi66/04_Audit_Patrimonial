@@ -1,110 +1,140 @@
 # utils/state_manager.py
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import numpy as np
+from datetime import datetime, date
 import json
 
+# --- DÉFINITION DE L'ÉTAT INITIAL ---
+def get_initial_state_config():
+    """
+    Retourne un dictionnaire de configuration pour l'état initial complet de l'application.
+    Ceci est la source de vérité pour toutes les variables de session.
+    """
+    return {
+        # Famille & Événements
+        'df_adultes': {'type': 'dataframe', 'cols': ['Prénom', 'Âge', 'Date Naissance']},
+        'df_enfants': {'type': 'dataframe', 'cols': ['Prénom', 'Âge', 'Date Naissance', 'Âge Début Études', 'Durée Études (ans)', 'Coût Annuel Études (€)']},
+        'parent_isole': {'type': 'value', 'default': False},
+        
+        # Patrimoine (Bilan)
+        'patrimoine': {
+            'type': 'value', 'default': {
+                'immobilier': [], 'investissements_financiers': [], 'autres_actifs': [], 'passifs': []
+            }
+        },
+        
+        # Patrimoine & Dettes (pour Projection)
+        'df_stocks': {'type': 'dataframe', 'cols': ['Actif', 'Type', 'Valeur Brute', 'Rendement %', 'Prix Achat Initial', 'Date Achat', 'Dispositif Fiscal', 'Durée Défiscalisation (ans)', 'Charges Annuelles (€)', 'Taxe Foncière Annuelle (€)', 'Loyer Mensuel Brut (€)']},
+        'df_prets': {'type': 'dataframe', 'cols': ['Actif Associé', 'Montant Initial', 'Taux Annuel %', 'Durée Initiale (ans)', 'Date Début', 'Assurance Emprunteur %']},
+        
+        # Flux
+        'df_revenus': {'type': 'dataframe', 'cols': ['Poste', 'Montant Annuel', 'Prénom Adulte', 'Type']},
+        'df_depenses': {'type': 'dataframe', 'cols': ['Poste', 'Montant Annuel']},
+        
+        # Projection
+        'df_pension_hypotheses': {'type': 'dataframe', 'cols': ['Prénom Adulte', 'Âge Départ Retraite', 'Montant Pension Annuelle (€)', 'Active', 'Année Départ Retraite']},
+        'df_ventes': {'type': 'dataframe', 'cols': ['Bien à Vendre', 'Année de Vente']},
+        'hyp_economiques': {'type': 'value', 'default': {'inflation': 0.0, 'revalo_salaire': 0.0}},
+        
+        # Données de sortie de simulation
+        'tableau_financier': {'type': 'value', 'default': None},
+        'logs_evenements': {'type': 'value', 'default': []},
+
+        # Paramètres et résultats d'optimisation/simulation
+        'optim_params': {'type': 'value', 'default': {}},
+        'opt_result': {'type': 'value', 'default': None},
+        'simulation_args': {'type': 'value', 'default': None},
+        'sim_manual_params': {'type': 'value', 'default': {}},
+        'manual_sim_results': {'type': 'value', 'default': None},
+    }
+
+# --- FONCTIONS DE GESTION DE L'ÉTAT ---
 def initialize_session():
     """
-    Initialise toutes les variables de session nécessaires pour l'application si elles n'existent pas.
+    Initialise st.session_state avec la structure de données complète si nécessaire.
     """
-    if 'initialized' in st.session_state:
-        return
+    config = get_initial_state_config()
+    for key, item_config in config.items():
+        if key not in st.session_state:
+            if item_config['type'] == 'dataframe':
+                st.session_state[key] = pd.DataFrame(columns=item_config['cols'])
+            elif item_config['type'] == 'value':
+                st.session_state[key] = item_config['default']
 
-    # --- Initialisation du Foyer ---
-    st.session_state.df_adultes = pd.DataFrame([
-        {'Prénom': 'Jean', 'Âge': 40, 'Date Naissance': datetime(1984, 5, 20)},
-        {'Prénom': 'Marie', 'Âge': 38, 'Date Naissance': datetime(1986, 8, 15)}
-    ])
-    st.session_state.df_enfants = pd.DataFrame([
-        {'Prénom': 'Léo', 'Âge': 12, 'Date Naissance': datetime(2012, 3, 10), 'Âge Début Études': 18, 'Durée Études (ans)': 5, 'Coût Annuel Études (€)': 8000}
-    ])
-    st.session_state.parent_isole = False
+def reset_state():
+    """
+    Réinitialise l'état de la session à sa valeur initiale.
+    """
+    config = get_initial_state_config()
+    # Supprimer toutes les clés gérées pour garantir une réinitialisation propre
+    for key in list(st.session_state.keys()):
+        if key in config:
+            del st.session_state[key]
+    initialize_session() # Recrée l'état à partir de la configuration
+    st.success("L'état de la session a été réinitialisé.")
 
-    # --- Initialisation du Patrimoine (Stocks) ---
-    st.session_state.df_stocks = pd.DataFrame([
-        {
-            'Actif': 'Résidence Principale', 'Type': 'Immobilier de jouissance', 'Valeur Brute': 350000, 'Valeur Nette': 200000, 
-            'Rendement %': 2.0, 'Prix Achat Initial': 280000, 'Date Achat': datetime(2015, 6, 15),
-            'Capital Réorientable ?': False, 'Pourcentage Réorientable (%)': 0.0,
-            'Loyer Mensuel Brut (€)': 0.0, 'Charges Annuelles (€)': 2000.0, 'Taxe Foncière Annuelle (€)': 1500.0,
-            'Type de Propriété': 'Commun', 'Propriétaire Propre': None, 'Part Adulte 1 (%)': 50.0, 'Part Adulte 2 (%)': 50.0,
-            'Dispositif Fiscal': None, 'Durée Défiscalisation (ans)': 0
-        },
-        {
-            'Actif': 'Immo Locatif (meublé)', 'Type': 'Immobilier productif', 'Valeur Brute': 120000, 'Valeur Nette': 80000, 
-            'Rendement %': 4.5, 'Prix Achat Initial': 90000, 'Date Achat': datetime(2018, 9, 1),
-            'Capital Réorientable ?': False, 'Pourcentage Réorientable (%)': 0.0,
-            'Loyer Mensuel Brut (€)': 450.0, 'Charges Annuelles (€)': 1000.0, 'Taxe Foncière Annuelle (€)': 800.0,
-            'Type de Propriété': 'Propre', 'Propriétaire Propre': 'Jean', 'Part Adulte 1 (%)': 100.0, 'Part Adulte 2 (%)': 0.0,
-            'Dispositif Fiscal': None, 'Durée Défiscalisation (ans)': 0
-        },
-        {
-            'Actif': 'Assurance Vie', 'Type': 'Financier', 'Valeur Brute': 50000, 'Valeur Nette': 50000, 
-            'Rendement %': 3.5, 'Prix Achat Initial': 40000, 'Date Achat': datetime(2019, 1, 1),
-            'Capital Réorientable ?': True, 'Pourcentage Réorientable (%)': 100.0,
-            'Loyer Mensuel Brut (€)': 0.0, 'Charges Annuelles (€)': 0.0, 'Taxe Foncière Annuelle (€)': 0.0,
-            'Type de Propriété': 'Commun', 'Propriétaire Propre': None, 'Part Adulte 1 (%)': 50.0, 'Part Adulte 2 (%)': 50.0,
-            'Dispositif Fiscal': None, 'Durée Défiscalisation (ans)': 0
-        },
-    ])
+# --- FONCTIONS DE SAUVEGARDE ET CHARGEMENT ---
+class CustomEncoder(json.JSONEncoder):
+    """Encode les objets complexes (DataFrame, datetime) en JSON."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date, pd.Timestamp)):
+            return {'__complex_object__': 'datetime', 'value': obj.isoformat()}
+        if isinstance(obj, pd.DataFrame):
+            # Utilise to_json avec l'orientation 'split' qui est efficace et gère bien les types
+            return {'__complex_object__': 'dataframe', 'value': obj.to_json(orient='split', date_format='iso')}
+        if pd.isna(obj):
+            return None  # Convertit pd.NA/np.nan en null JSON
+        return super().default(obj)
 
-    # --- Initialisation des Flux (Revenus & Dépenses) ---
-    st.session_state.df_revenus = pd.DataFrame([
-        # MODIFIÉ: Ajout de 'Prénom Adulte' et 'Type'
-        {'Poste': 'Salaire Jean', 'Montant Annuel': 55000, 'Prénom Adulte': 'Jean', 'Type': 'Salaire'},
-        {'Poste': 'Salaire Marie', 'Montant Annuel': 48000, 'Prénom Adulte': 'Marie', 'Type': 'Salaire'},
-        {'Poste': 'Revenus indépendants', 'Montant Annuel': 5000, 'Prénom Adulte': None, 'Type': 'Autre'}
-    ])
-    st.session_state.df_depenses = pd.DataFrame([
-        {'Poste': 'Dépenses courantes', 'Montant Annuel': 30000}, 
-        {'Poste': 'Loisirs et vacances', 'Montant Annuel': 5000}
-    ])
+def custom_decoder(dct):
+    """Décode les objets complexes depuis JSON."""
+    if '__complex_object__' in dct:
+        obj_type = dct['__complex_object__']
+        if obj_type == 'datetime':
+            return pd.to_datetime(dct['value'])
+        if obj_type == 'dataframe':
+            # Utilise read_json avec l'orientation 'split'
+            return pd.read_json(dct['value'], orient='split')
+    return dct
 
-    # --- Initialisation des Passifs (Prêts) ---
-    st.session_state.df_prets = pd.DataFrame([
-        {'Actif Associé': 'Résidence Principale', 'Montant Initial': 150000, 'Taux Annuel %': 1.5, 'Durée Initiale (ans)': 25, 'Date Début': datetime(2015, 6, 15), 'Assurance Emprunteur %': 0.36},
-        {'Actif Associé': 'Immo Locatif (meublé)', 'Montant Initial': 40000, 'Taux Annuel %': 2.0, 'Durée Initiale (ans)': 20, 'Date Début': datetime(2018, 9, 1), 'Assurance Emprunteur %': 0.36}
-    ])
-    
-    # --- Initialisation des Hypothèses de Projection ---
-    st.session_state.hyp_economiques = {'inflation': 2.0, 'revalo_salaire': 1.5}
-    st.session_state.df_pension_hypotheses = pd.DataFrame([
-        {'Prénom Adulte': 'Jean', 'Âge Départ Retraite': 64, 'Montant Pension Annuelle (€)': 30000, 'Active': True, 'Année Départ Retraite': pd.NA},
-        {'Prénom Adulte': 'Marie', 'Âge Départ Retraite': 64, 'Montant Pension Annuelle (€)': 28000, 'Active': True, 'Année Départ Retraite': pd.NA}
-    ])
-    st.session_state.df_ventes = pd.DataFrame(columns=['Bien à Vendre', 'Année de Vente'])
-
-    # --- Marqueur d'initialisation ---
-    st.session_state.initialized = True
-    
-def serialize_state():
+def save_state_to_file(file_path):
+    """
+    Sauvegarde l'état actuel de la session dans un fichier JSON.
+    """
     state_to_save = {}
-    keys_to_save = ['df_stocks', 'df_revenus', 'df_depenses', 'df_prets', 'df_adultes', 'df_enfants', 'parent_isole', 'df_ventes', 'hyp_economiques', 'df_pension_hypotheses']
-    for key in keys_to_save:
+    config = get_initial_state_config()
+    # On ne sauvegarde que les clés qui font partie de notre état défini
+    for key in config.keys():
         if key in st.session_state:
-            data = st.session_state[key]
-            if isinstance(data, pd.DataFrame):
-                df_copy = data.copy()
-                for col in df_copy.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns:
-                    df_copy[col] = df_copy[col].dt.strftime('%Y-%m-%d')
-                state_to_save[key] = df_copy.to_dict('records')
-            else:
-                state_to_save[key] = data
-    return json.dumps(state_to_save, indent=4)
+            state_to_save[key] = st.session_state[key]
+            
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(state_to_save, f, cls=CustomEncoder, indent=4)
+        st.success(f"État sauvegardé avec succès dans {file_path}")
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde du fichier : {e}")
 
-def deserialize_and_update_state(json_data):
-    data = json.load(json_data)
-    for key, value in data.items():
-        if isinstance(value, list) and key.startswith('df_'):
-            df = pd.DataFrame(value)
-            for col in df.columns:
-                # Convertir les colonnes de date
-                if 'Date' in col or 'Année Départ Retraite' in col: # Année Départ Retraite peut être une date ou un entier
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
-                    if col == 'Année Départ Retraite' and df[col].isna().all(): # Si c'est une année, convertir en Int64
-                        df[col] = pd.to_numeric(pd.DataFrame(value)[col], errors='coerce').astype('Int64')
-            st.session_state[key] = df
-        else:
-            st.session_state[key] = value
+def load_state_from_file(uploaded_file):
+    """
+    Charge l'état de la session depuis un fichier JSON, en réinitialisant d'abord.
+    """
+    try:
+        content = uploaded_file.read().decode('utf-8')
+        loaded_data = json.loads(content, object_hook=custom_decoder)
+        
+        # Réinitialiser l'état avant de charger pour éviter les conflits de clés anciennes/nouvelles
+        reset_state()
+        
+        # Mettre à jour la session avec les données chargées
+        for key, value in loaded_data.items():
+            # S'assurer de ne charger que les clés attendues pour la sécurité et la propreté
+            if key in get_initial_state_config():
+                st.session_state[key] = value
+            else:
+                st.warning(f"Clé '{key}' trouvée dans le fichier mais non reconnue par l'application. Elle a été ignorée.")
+
+        st.success("État chargé avec succès !")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du fichier : {e}")

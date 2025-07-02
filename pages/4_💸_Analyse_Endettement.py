@@ -3,6 +3,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from utils.state_manager import initialize_session
+
+# Initialiser la session au début du script
+initialize_session()
 
 # Tentative d'importation de la fonction de calcul des mensualités
 try:
@@ -42,25 +46,14 @@ taux_endettement_max_cible = st.slider(
 st.markdown("---")
 
 # --- Chargement et Préparation des Données ---
-data_ready = True
-# Vérification des revenus
-if 'df_revenus' not in st.session_state or st.session_state.df_revenus.empty:
+if st.session_state.df_revenus.empty:
     st.info("ℹ️ Aucun revenu n'a été saisi dans l'onglet '💸 Flux'. Le calcul du taux d'endettement ne peut être effectué sans revenus.")
-    data_ready = False
-    # Création d'un DataFrame df_revenus vide pour éviter les erreurs si c'est la seule donnée manquante
-    st.session_state.df_revenus = pd.DataFrame(columns=['Montant Annuel'])
-
-# Initialisation des DataFrames s'ils n'existent pas pour éviter les KeyError
-if 'df_prets' not in st.session_state:
-    st.session_state.df_prets = pd.DataFrame(columns=['Actif Associé', 'Montant Initial', 'Taux Annuel %', 'Durée Initiale (ans)', 'Date Début', 'Assurance Emprunteur %'])
-if 'df_stocks' not in st.session_state:
-    st.session_state.df_stocks = pd.DataFrame(columns=['Actif', 'Type', 'Valeur Brute', 'Rendement %'])
 
 # Conditions d'arrêt ou d'avertissement si les données sont insuffisantes
-if not data_ready and st.session_state.df_prets.empty: 
+if st.session_state.df_revenus.empty and st.session_state.df_prets.empty: 
     st.warning("Veuillez saisir des revenus et/ou des prêts pour effectuer une analyse.")
     st.stop()
-elif not data_ready and not st.session_state.df_prets.empty: 
+elif st.session_state.df_revenus.empty and not st.session_state.df_prets.empty: 
      st.warning("⚠️ Aucun revenu n'a été saisi, mais des prêts existent. Le taux d'endettement sera infini ou non calculable.")
      # On continue pour afficher au moins les charges de prêts
 

@@ -5,10 +5,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime # Ajout de l'import datetime
 from utils.calculs_projection import generer_projection_complete
+from utils.state_manager import initialize_session
 
-# Initialisation de la clé de session_state si elle n'existe pas
-if 'hyp_economiques' not in st.session_state:
-    st.session_state.hyp_economiques = {}
+# Initialiser la session au début du script
+initialize_session()
 
 # Configuration de la barre latérale pour cette page
 st.sidebar.title("Paramètres de Projection")

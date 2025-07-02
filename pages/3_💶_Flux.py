@@ -5,12 +5,12 @@ import plotly.express as px
 from datetime import datetime
 import numpy as np
 from utils.calculs import calculer_mensualite_pret
+from utils.state_manager import initialize_session
+
+# Initialiser la session au début du script
+initialize_session()
 
 st.title("💸 Suivi des Flux Financiers du Foyer")
-
-# --- Assurer l'existence des colonnes requises dans df_revenus ---
-if 'df_revenus' not in st.session_state:
-    st.session_state.df_revenus = pd.DataFrame(columns=['Poste', 'Montant Annuel', 'Prénom Adulte', 'Type'])
 
 required_cols = {'Prénom Adulte': None, 'Type': 'Autre'}
 for col, default_value in required_cols.items():

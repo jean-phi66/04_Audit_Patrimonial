@@ -2,6 +2,7 @@
 import streamlit as st
 from utils.optim_patrimoine.ui_components import setup_sidebar, display_results
 from utils.optim_patrimoine.optimization import setup_and_run_optimization
+from utils.state_manager import initialize_session
 
 st.set_page_config(layout="wide", page_title="Optimisation d'Investissement")
 st.title("🚀 Optimisation d'Investissement")
@@ -10,9 +11,8 @@ Laissez l'algorithme trouver la meilleure allocation d'actifs pour atteindre vos
 en fonction de vos paramètres définis dans la barre latérale.
 """)
 
-# Initialiser les paramètres si ce n'est pas déjà fait (utile si on arrive directement sur cette page)
-if 'optim_params' not in st.session_state:
-    st.session_state.optim_params = {}
+# Initialiser la session au début du script
+initialize_session()
 
 # Le nom de la page est passé à setup_sidebar pour un comportement conditionnel si nécessaire
 params = setup_sidebar(page_name="optimisation")

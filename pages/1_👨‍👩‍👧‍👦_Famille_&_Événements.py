@@ -4,6 +4,11 @@ import pandas as pd
 from datetime import datetime
 # Importer les nouvelles fonctions utilitaires
 from utils.famille_utils import calculate_age, add_new_adult, add_new_child
+from utils.state_manager import initialize_session
+
+# Initialiser la session au début du script pour garantir que les DataFrames existent
+initialize_session()
+
 
 def display_adults_section():
     """

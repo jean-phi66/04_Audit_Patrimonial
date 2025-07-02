@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from utils.optim_patrimoine.ui_components import setup_sidebar, display_results, display_kpis, display_allocations_and_charts
 from utils.optim_patrimoine.simulation import run_unified_simulation
+from utils.state_manager import initialize_session
 
 st.set_page_config(layout="wide", page_title="Simulation Manuelle d'Investissement")
 st.title("🕹️ Simulation Manuelle d'Investissement")
@@ -12,9 +13,8 @@ Testez vous-même une stratégie d'investissement en définissant manuellement l
 et les caractéristiques d'un éventuel projet immobilier. Les paramètres sont configurés dans la barre latérale.
 """)
 
-# Initialiser les paramètres si ce n'est pas déjà fait
-if 'sim_manual_params' not in st.session_state:
-    st.session_state.sim_manual_params = {}
+# Initialiser la session au début du script
+initialize_session()
 
 # Le nom de la page est passé à setup_sidebar
 params = setup_sidebar(page_name="simulation") # Important pour afficher les sliders d'allocation manuelle

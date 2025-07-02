@@ -1,57 +1,56 @@
-# pages/5_⚙️_Sauvegarde_&_Chargement.py
+# pages/8_💾_Sauvegarde_&_Chargement.py
 import streamlit as st
-from utils.state_manager import serialize_state, deserialize_and_update_state
+import os
+from utils.state_manager import (
+    save_state_to_file, 
+    load_state_from_file, 
+    reset_state, 
+    initialize_session
+)
 
-st.title("💾 Sauvegarde & Chargement de la Session")
+# Configuration de la page
+st.set_page_config(page_title="Sauvegarde & Chargement", layout="wide")
+st.title("💾 Sauvegarde & Chargement")
 
-st.write("Utilisez les boutons ci-dessous pour sauvegarder l'ensemble de vos données dans un fichier, ou pour charger une session précédente.")
+# Initialisation de l'état (important au début de chaque page)
+initialize_session()
 
-st.divider()
+# --- Section Sauvegarde ---
+st.header("Sauvegarder l'état de la session")
+save_path = "session_state.json" # Fichier temporaire sur le serveur
 
-# --- Section de Chargement ---
-st.subheader("Charger une session depuis un fichier")
+if st.button("Préparer le fichier de sauvegarde"):
+    save_state_to_file(save_path)
+
+# Le bouton de téléchargement apparaît si le fichier de sauvegarde a été créé
+if os.path.exists(save_path):
+    with open(save_path, "rb") as fp:
+        st.download_button(
+            label="Télécharger le fichier de sauvegarde",
+            data=fp,
+            file_name="audit_patrimonial_sauvegarde.json",
+            mime="application/json"
+        )
+    # On peut optionnellement supprimer le fichier temporaire après préparation
+    # os.remove(save_path)
+
+# --- Section Chargement ---
+st.header("Charger l'état de la session depuis un fichier")
 uploaded_file = st.file_uploader(
-    "📂 Charger un fichier de données",
+    "Choisissez un fichier de sauvegarde (.json)", 
     type="json"
 )
+
 if uploaded_file is not None:
-    try:
-        deserialize_and_update_state(uploaded_file)
-        st.success("Données chargées avec succès ! L'application va se rafraîchir.")
-        st.rerun()
-    except Exception as e:
-        st.error(f"Erreur lors du chargement du fichier : {e}")
-else:
-    # La section de sauvegarde n'est affichée que si aucun fichier n'est en cours de traitement.
-    # Cela évite que le st.rerun() du chargement n'invalide le bouton de sauvegarde.
-    st.divider()
-    st.subheader("Sauvegarder la session actuelle")
+    # Le chargement se fait via la fonction du state_manager qui gère aussi le st.rerun()
+    load_state_from_file(uploaded_file)
+    # Il n'est plus nécessaire d'avoir un bouton "Charger" car le simple fait
+    # de téléverser un fichier suffit à le rendre disponible. On pourrait
+    # garder un bouton pour une confirmation explicite si souhaité.
 
-    # Initialiser le nom du fichier dans le session_state s'il n'existe pas.
-    if 'save_file_name' not in st.session_state:
-        st.session_state.save_file_name = "donnees_audit_patrimonial"
+# --- Section Réinitialisation ---
+st.header("Réinitialiser l'état")
+if st.button("Réinitialiser la session"):
+    reset_state()
+    st.rerun()
 
-    # Le widget text_input met à jour directement st.session_state.save_file_name grâce à la clé.
-    st.text_input(
-        "Nom du fichier de sauvegarde",
-        key="save_file_name",
-        help="Entrez un nom pour votre fichier de sauvegarde (l'extension .json sera ajoutée automatiquement)."
-    )
-
-    try:
-        json_string = serialize_state()
-        download_disabled = False
-    except Exception as e:
-        json_string = f"Erreur de sérialisation: {e}"
-        download_disabled = True
-        st.error(f"Impossible de préparer les données pour la sauvegarde : {e}")
-
-    st.download_button(
-        label="💾 Sauvegarder les données",
-        data=json_string,
-        file_name=f"{st.session_state.save_file_name}.json" if st.session_state.save_file_name else "donnees_audit_patrimonial.json",
-        mime="application/json",
-        use_container_width=True,
-        type="primary",
-        disabled=download_disabled
-    )
