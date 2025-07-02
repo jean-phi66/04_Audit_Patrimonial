@@ -15,22 +15,37 @@ def initialize_session():
         {'Actif': 'Livret bancaire', 'Type': 'Financier', 'Valeur Brute': 15000, 'Valeur Nette': 15000, 'Rendement %': 3.0, 'Prix Achat Initial': 15000, 'Date Achat': datetime(2019, 1, 1)},
     ])
     st.session_state.df_revenus = pd.DataFrame({'Poste': ['Salaire', 'Revenus locatifs'], 'Montant Annuel': [60000, 8000]})
-    st.session_state.df_depenses = pd.DataFrame({'Poste': ['Dépenses courantes', 'Taxe foncière'], 'Montant Annuel': [25000, 1500]})
+    # Assurer que df_revenus a un Prénom associé si nécessaire pour la logique de pension
+    # Pour l'instant, on suppose que le premier revenu est pour le premier adulte, etc.
+    # Ou que la projection gère cela via df_adultes.
+    st.session_state.df_depenses = pd.DataFrame({'Poste': ['Dépenses courantes', 'Taxe foncière'], 'Montant Annuel': [25000, 1500]}) # Pas de changement ici
     st.session_state.df_prets = pd.DataFrame([
         {'Nom': 'Prêt RP', 'Montant Initial': 150000, 'Taux Annuel %': 1.5, 'Durée Initiale (ans)': 25, 'Date Début': datetime(2020, 1, 1), 'Actif Associé': 'Résidence Principale'},
         {'Nom': 'Prêt Locatif', 'Montant Initial': 40000, 'Taux Annuel %': 2.0, 'Durée Initiale (ans)': 20, 'Date Début': datetime(2022, 1, 1), 'Actif Associé': 'Immo Locatif (meublé)'}
     ])
-    st.session_state.df_adultes = pd.DataFrame([{'Prénom': 'Jean', 'Âge': 40, 'Année Départ Retraite': 2049}])
+    st.session_state.df_adultes = pd.DataFrame([{'Prénom': 'Jean', 'Âge': 40}]) # Suppression de 'Année Départ Retraite'
     st.session_state.df_enfants = pd.DataFrame([{'Prénom': 'Léo', 'Âge': 12, 'Âge Début Études': 18, 'Durée Études (ans)': 5, 'Coût Annuel Études (€)': 8000}])
-    st.session_state.hyp_retraite = {'taux_remplacement': 60.0}
+    # Suppression de hyp_retraite, remplacé par df_pension_hypotheses
     st.session_state.hyp_economiques = {'inflation': 2.0, 'revalo_salaire': 1.5}
     st.session_state.parent_isole = True
     st.session_state.df_ventes = pd.DataFrame(columns=['Année de Vente', 'Bien à Vendre'])
+    
+    # Initialisation améliorée de df_pension_hypotheses
+    st.session_state.df_pension_hypotheses = pd.DataFrame([
+        {'Prénom Adulte': 'Jean', 'Âge Départ Retraite': 64, 'Montant Pension Annuelle (€)': 30000, 'Active': True, 'Année Départ Retraite': pd.NA}
+    ])
+    # S'assurer que les types sont corrects dès l'initialisation
+    st.session_state.df_pension_hypotheses['Prénom Adulte'] = st.session_state.df_pension_hypotheses['Prénom Adulte'].astype('object')
+    st.session_state.df_pension_hypotheses['Âge Départ Retraite'] = pd.to_numeric(st.session_state.df_pension_hypotheses['Âge Départ Retraite'], errors='coerce').astype('Int64')
+    st.session_state.df_pension_hypotheses['Montant Pension Annuelle (€)'] = pd.to_numeric(st.session_state.df_pension_hypotheses['Montant Pension Annuelle (€)'], errors='coerce').astype('float64')
+    st.session_state.df_pension_hypotheses['Active'] = st.session_state.df_pension_hypotheses['Active'].astype('boolean') # Utiliser le type nullable boolean
+    st.session_state.df_pension_hypotheses['Année Départ Retraite'] = pd.to_numeric(st.session_state.df_pension_hypotheses['Année Départ Retraite'], errors='coerce').astype('Int64')
+
     st.session_state.initialized = True
 
 def serialize_state():
     state_to_save = {}
-    keys_to_save = ['df_stocks', 'df_revenus', 'df_depenses', 'df_prets', 'df_adultes', 'df_enfants', 'hyp_retraite', 'parent_isole', 'df_ventes', 'hyp_economiques']
+    keys_to_save = ['df_stocks', 'df_revenus', 'df_depenses', 'df_prets', 'df_adultes', 'df_enfants', 'parent_isole', 'df_ventes', 'hyp_economiques', 'df_pension_hypotheses']
     for key in keys_to_save:
         if key in st.session_state:
             data = st.session_state[key]
@@ -49,8 +64,11 @@ def deserialize_and_update_state(json_data):
         if isinstance(value, list) and key.startswith('df_'):
             df = pd.DataFrame(value)
             for col in df.columns:
-                if 'Date' in col:
+                # Convertir les colonnes de date
+                if 'Date' in col or 'Année Départ Retraite' in col: # Année Départ Retraite peut être une date ou un entier
                     df[col] = pd.to_datetime(df[col], errors='coerce')
+                    if col == 'Année Départ Retraite' and df[col].isna().all(): # Si c'est une année, convertir en Int64
+                        df[col] = pd.to_numeric(pd.DataFrame(value)[col], errors='coerce').astype('Int64')
             st.session_state[key] = df
         else:
             st.session_state[key] = value

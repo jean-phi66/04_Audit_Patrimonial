@@ -14,12 +14,13 @@ st.set_page_config(
 )
 
 # --- FONCTIONS DE SIMULATION ET D'OPTIMISATION ---
-def calculate_monthly_payment(loan_amount, rate_pct, duration_years):
+def calculate_monthly_payment(loan_amount, rate_pct, duration_years, insurance_rate_pct):
     if loan_amount <= 0 or duration_years <= 0 or rate_pct < 0: return 0
     monthly_rate = (rate_pct / 100) / 12
+    monthly_insurance_rate = (insurance_rate_pct / 100) / 12
     n_months = duration_years * 12
     if n_months <= 0: return float('inf')
-    return -npf.pmt(monthly_rate, n_months, loan_amount)
+    return (-npf.pmt(monthly_rate, n_months, loan_amount) if monthly_rate > 0 else loan_amount / n_months) + (loan_amount * monthly_insurance_rate)
 
 def run_unified_simulation(optimization_vars, asset_names, initial_capital, monthly_investment, investment_horizon, df_options_financiers, immo_params, loan_params, marginal_tax_rate, per_deduction_limit):
     include_immo = immo_params is not None
@@ -54,7 +55,10 @@ def run_unified_simulation(optimization_vars, asset_names, initial_capital, mont
         if include_immo and not immo_purchase_done and year == 1:
             immo_purchase_done = True
             loan_amount = target_immo_price
-            event_logs.append(f"Année 1: Achat d'un bien de {target_immo_price:,.0f} € financé à 100%.")
+            # Calculate monthly P&I and monthly insurance separately
+            monthly_rate = (loan_params['rate'] / 100) / 12
+            monthly_pi = -npf.pmt(monthly_rate, loan_params['duration'] * 12, loan_amount) if monthly_rate > 0 else loan_amount / (loan_params['duration'] * 12)
+            monthly_insurance = loan_amount * (loan_params['insurance_rate'] / 100) / 12
             patrimoine['Immobilier (Bien)'] = target_immo_price * (1 - immo_params['frais_notaire_pct']/100)
             loan_crd, annuite_pret = loan_amount, calculate_monthly_payment(loan_amount, loan_params['rate'], loan_params['duration']) * 12
 
@@ -68,12 +72,15 @@ def run_unified_simulation(optimization_vars, asset_names, initial_capital, mont
         net_immo_cash_flow = 0
         if immo_purchase_done:
             loyer_annuel = target_immo_price * (immo_params['rendement_locatif_brut'] / 100)
-            interets, amortissement = loan_crd * (loan_params['rate']/100), (target_immo_price * 0.85)/30
+            
+            # Calculate annual interest for tax purposes (based on CRD)
+            interets_annuels = loan_crd * (loan_params['rate']/100)
+            # Calculate annual principal repayment (based on constant P&I payment)
+            principal_annuel = (monthly_pi * 12) - interets_annuels # Principal part of P&I payment for the year
+            
             revenu_imposable = loyer_annuel - ((loyer_annuel*immo_params['charges_pct']/100) + interets + amortissement)
             impot_locatif = max(0, revenu_imposable) * (marginal_tax_rate/100 + 0.172)
-            remb_capital = min(loan_crd, annuite_pret - interets)
-            loan_crd = max(0, loan_crd - remb_capital)
-            net_immo_cash_flow = loyer_annuel - annuite_pret - (loyer_annuel*immo_params['charges_pct']/100) - impot_locatif
+            loan_crd = max(0, loan_crd - principal_annuel) # CRD decreases only by principal repayment (P&I part)
             kpi_trackers.update({'total_rent_received': kpi_trackers['total_rent_received'] + loyer_annuel, 'total_interest_paid': kpi_trackers['total_interest_paid'] + interets, 'total_rental_tax': kpi_trackers['total_rental_tax'] + impot_locatif})
             historique.loc[year, 'Soutien Épargne Immo'] = max(0, -net_immo_cash_flow)
         
@@ -140,9 +147,11 @@ df_options_financiers_edited = st.sidebar.data_editor(df_options_financiers, col
 include_immo = st.sidebar.checkbox("Inclure un projet immobilier (achat en Année 1 sans apport)", value=True)
 st.sidebar.header("Hypothèses Projet Immobilier")
 loan_params = {'mensualite_max': st.sidebar.number_input("Mensualité max de prêt (€)", 50, 5000, 1000, 50, disabled=not include_immo)}
-immo_price_range = st.sidebar.slider("Fourchette de prix du bien (€)", 0, 1000000, (0, 150000), step=10000, disabled=not include_immo)
+immo_price_range = st.sidebar.slider("Fourchette de prix du bien (€)", 0, 1000000, (100000, 200000), step=10000, disabled=not include_immo)
 immo_params = {'rendement_locatif_brut': st.sidebar.slider("Rdt Locatif Brut (%)", 2.0, 8.0, 5.0, 0.1, disabled=not include_immo), 'charges_pct': st.sidebar.slider("Charges annuelles (% loyer)", 0, 30, 15, 1, disabled=not include_immo), 'frais_notaire_pct': st.sidebar.slider("Frais d'acquisition (%)", 5.0, 12.0, 8.0, 0.5, disabled=not include_immo), 'immo_reval_rate': st.sidebar.slider("Reval. annuelle du bien (%)", -2.0, 5.0, 1.5, 0.1, disabled=not include_immo)}
 loan_params.update({'rate': st.sidebar.slider("Taux crédit immo (%)", 1.0, 6.0, 3.5, 0.1, disabled=not include_immo), 'duration': st.sidebar.slider("Durée crédit (ans)", 10, 25, 20, 1, disabled=not include_immo)})
+# Ajout du champ pour le taux d'assurance emprunteur
+loan_params.update({'insurance_rate': st.sidebar.slider("Taux Assurance Emprunteur Annuel (%)", 0.0, 2.0, 0.36, 0.01, help="Taux annuel de l'assurance sur le capital initial.", disabled=not include_immo)})
 
 # --- PAGE PRINCIPALE ---
 st.title("🚀 Optimiseur d'Allocation Patrimoniale")
@@ -163,7 +172,7 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
                 num_alloc_vars = len(asset_names)
                 initial_guess = np.array([1.0/num_alloc_vars if num_alloc_vars > 0 else 0.0]*num_alloc_vars + [np.mean(immo_price_range)])
                 bounds = ([(0,1)]*num_alloc_vars if num_alloc_vars > 0 else []) + [immo_price_range]
-                def check_mensualite(x): return loan_params['mensualite_max'] - calculate_monthly_payment(x[-1], loan_params['rate'], loan_params['duration'])
+                def check_mensualite(x): return loan_params['mensualite_max'] - calculate_monthly_payment(x[-1], loan_params['rate'], loan_params['duration'], loan_params.get('insurance_rate', 0)) # Use 0 if insurance_rate is not set
                 constraints = []
                 if num_alloc_vars > 0:
                     constraints.append({'type': 'eq', 'fun': lambda x: 1 - np.sum(x[:-1])})
@@ -227,9 +236,9 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
                 if include_immo:
                     with col2:
                         st.write("**Bilan du Projet Immobilier**")
-                        optimal_immo_price = optimal_vars[-1]
+                        optimal_immo_price = optimal_vars[-1] if include_immo else 0
                         loan_amount = optimal_immo_price
-                        final_mensualite = calculate_monthly_payment(loan_amount, loan_params['rate'], loan_params['duration'])
+                        final_mensualite = calculate_monthly_payment(loan_amount, loan_params['rate'], loan_params['duration'], loan_params.get('insurance_rate', 0))
                         st.metric(label="Prix d'achat du bien visé", value=f"{optimal_immo_price:,.0f} €", help=f"Mensualité de prêt associée : {final_mensualite:,.0f} €/mois")
                         st.text(f"Total Loyers Perçus : {kpis.get('total_rent_received', 0):,.0f} €")
                         st.text(f"Total Intérêts Payés : {kpis.get('total_interest_paid', 0):,.0f} €")
@@ -266,5 +275,5 @@ if st.button("Lancer l'Optimisation", type="primary", use_container_width=True):
                     st.subheader("🕵️ Diagnostic de l'Échec")
                     last_immo_price = opt_result.x[-1]
                     loan_amount = last_immo_price
-                    calculated_payment = calculate_monthly_payment(loan_amount, loan_params['rate'], loan_params['duration'])
+                    calculated_payment = calculate_monthly_payment(loan_amount, loan_params['rate'], loan_params['duration'], loan_params.get('insurance_rate', 0))
                     st.warning(f"La mensualité calculée ({calculated_payment:,.0f} €) pour le dernier bien testé à {last_immo_price:,.0f} € dépasse probablement votre maximum autorisé de {loan_params['mensualite_max']:,.0f} €.")

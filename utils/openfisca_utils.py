@@ -19,18 +19,35 @@ def calculer_impot_openfisca(annee, foyer_details):
     
     individus = {}
     for i, adulte in enumerate(foyer_details['adultes_details']):
+        annee_naissance_adulte = adulte.get('annee_naissance')
+        if pd.isna(annee_naissance_adulte):
+            st.error(f"Année de naissance manquante pour parent{i+1} pour l'année {annee}. Calcul d'impôt approximatif utilisé.")
+            return foyer_details.get('revenus_imposables', 0) * 0.15 # Fallback
+        
+        # Assurer que l'année de naissance est un entier pour le formatage correct de la date
+        date_naissance_formatee = f"{int(annee_naissance_adulte)}-01-01"
+        
         individus[f'parent{i+1}'] = {
             'salaire_imposable': {str(annee): adulte['revenu']},
-            'date_naissance': {'ETERNITY': f"{adulte['annee_naissance']}-01-01"}
+            'date_naissance': {'ETERNITY': date_naissance_formatee}
         }
     
-    personnes_a_charge = [f'enfant{i+1}' for i, _ in enumerate(foyer_details['enfants_details'])]
+    personnes_a_charge_valides = []
     for i, enfant in enumerate(foyer_details['enfants_details']):
-        individus[f'enfant{i+1}'] = {'date_naissance': {'ETERNITY': f"{enfant['Année Naissance']}-01-01"}}
+        annee_naissance_enfant = enfant.get('Année Naissance')
+        if pd.isna(annee_naissance_enfant):
+            st.warning(f"Année de naissance manquante pour enfant{i+1} pour l'année {annee}. Enfant ignoré pour le calcul d'impôt.")
+            continue # Ne pas traiter cet enfant si son année de naissance manque
+            
+        # Assurer que l'année de naissance est un entier pour le formatage correct de la date
+        date_naissance_enfant_formatee = f"{int(annee_naissance_enfant)}-01-01"
+        nom_openfisca_enfant = f'enfant{i+1}'
+        individus[nom_openfisca_enfant] = {'date_naissance': {'ETERNITY': date_naissance_enfant_formatee}}
+        personnes_a_charge_valides.append(nom_openfisca_enfant)
         
     foyer_fiscal = {'foyerfiscal1': {
         'declarants': [f'parent{i+1}' for i in range(len(foyer_details['adultes_details']))],
-        'personnes_a_charge': personnes_a_charge
+        'personnes_a_charge': personnes_a_charge_valides
     }}
     
     if foyer_details.get('est_parent_isole', False):

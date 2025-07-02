@@ -1,13 +1,14 @@
-# Fichier: ui_components.py (version mise à jour pour simulation manuelle)
+# Fichier: ui_components.py (version mise à jour pour être contextuelle)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy_financial as npf
 from simulation import run_unified_simulation, calculate_monthly_payment
 
-def setup_sidebar():
+# <<< MODIFIÉ : La fonction accepte maintenant un argument pour savoir sur quelle page on est
+def setup_sidebar(page_name="optimisation"): 
     """
-    Configure et affiche la barre latérale de l'application Streamlit pour recueillir les paramètres de l'utilisateur.
+    Configure et affiche la barre latérale de l'application Streamlit.
     """
     st.sidebar.title("👨‍💼 Vos Paramètres")
     st.sidebar.header("Situation Initiale")
@@ -50,18 +51,19 @@ def setup_sidebar():
         'duration': st.sidebar.slider("Durée crédit (ans)", 10, 25, 20, 1, disabled=not include_immo)
     })
 
-    # <<< AJOUT : Section pour l'allocation manuelle >>>
-    st.sidebar.header("Allocation Manuelle (pour Simulation)")
-    st.sidebar.caption("Utilisez ces sliders pour définir une stratégie manuelle, puis cliquez sur 'Lancer la Simulation Manuelle'.")
-    
-    active_financial_assets = df_options_financiers_edited[df_options_financiers_edited['Actif']].index.tolist()
     manual_allocations = {}
-    if active_financial_assets:
-        for asset in active_financial_assets:
-            manual_allocations[asset] = st.sidebar.slider(f"Allocation {asset} (%)", 0, 100, 100 // len(active_financial_assets), 1)
-    else:
-        st.sidebar.info("Aucun actif financier sélectionné.")
-    # <<< FIN DE L'AJOUT >>>
+    # <<< MODIFIÉ : On n'affiche cette section que sur la page de simulation >>>
+    if page_name == "simulation":
+        st.sidebar.header("Allocation Manuelle")
+        st.sidebar.caption("Définissez votre stratégie manuelle ici.")
+        
+        active_financial_assets = df_options_financiers_edited[df_options_financiers_edited['Actif']].index.tolist()
+        if active_financial_assets:
+            for asset in active_financial_assets:
+                # Utiliser une clé unique pour chaque slider pour éviter les conflits entre widgets
+                manual_allocations[asset] = st.sidebar.slider(f"Allocation {asset} (%)", 0, 100, 100 // len(active_financial_assets), 1, key=f"manual_{asset}")
+        else:
+            st.sidebar.info("Aucun actif financier sélectionné.")
 
     return {
         "initial_capital": initial_capital,
@@ -76,8 +78,9 @@ def setup_sidebar():
         "immo_params": immo_params,
         "fix_immo_price": fix_immo_price,
         "fixed_immo_price": fixed_immo_price,
-        "manual_allocations": manual_allocations # <<< AJOUT : On retourne les allocations manuelles
+        "manual_allocations": manual_allocations # On retourne les allocations
     }
+
 
 # Le reste du fichier (display_results, etc.) ne change pas.
 def display_results(opt_result, simulation_args):
