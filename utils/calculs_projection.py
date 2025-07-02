@@ -285,6 +285,13 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
         sim_patrimoine, cash_flow_vente, echeanciers, logs_vente = _gerer_ventes_immobilieres(annee, ventes_df, sim_patrimoine, historique_achat, echeanciers, prets_df)
         logs_evenements.extend(logs_vente)
         
+        # Calculer les charges immobilières pour l'année en cours sur les biens restants
+        charges_immo_annuelles = 0
+        if 'Charges Annuelles (€)' in sim_patrimoine.columns:
+            charges_immo_annuelles += pd.to_numeric(sim_patrimoine['Charges Annuelles (€)'], errors='coerce').fillna(0).sum()
+        if 'Taxe Foncière Annuelle (€)' in sim_patrimoine.columns:
+            charges_immo_annuelles += pd.to_numeric(sim_patrimoine['Taxe Foncière Annuelle (€)'], errors='coerce').fillna(0).sum()
+
         sim_revenus_annee = sim_revenus_base.copy()
         
         df_immobilier_productif_actuel = sim_patrimoine[sim_patrimoine['Type'] == 'Immobilier productif']
@@ -308,7 +315,8 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
         total_reduction_fiscale_annee = sum(red['reduction_annuelle'] for red in reductions_fiscales_actives if red['annee_debut'] <= annee <= red['annee_fin'])
         impot_annuel_final = max(0, impot_annuel_avant_reduction - total_reduction_fiscale_annee)
         
-        reste_a_vivre = flux["total_revenus"] - flux["total_depenses"] - impot_annuel_final - mensualites_prets + cash_flow_vente
+        total_depenses_annee = flux["total_depenses"] + charges_immo_annuelles
+        reste_a_vivre = flux["total_revenus"] - total_depenses_annee - impot_annuel_final - mensualites_prets + cash_flow_vente
         
         pat_net, act_tot, val_fin_gross, val_immo_j_gross, val_immo_p_gross, sim_patrimoine = _mettre_a_jour_patrimoine(sim_patrimoine, reste_a_vivre, passif_total)
 
@@ -316,7 +324,7 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
             "Année": annee, "Patrimoine Net": pat_net, "Actifs Totaux": act_tot, "Passifs Totaux": passif_total,
             "Patrimoine Financier": val_fin_gross, "Immobilier Jouissance": val_immo_j_gross, "Immobilier Productif": val_immo_p_gross,
             "Patrimoine Financier Net": val_fin_gross, "Immobilier Jouissance Net": val_immo_j_gross - passif_jouissance, "Immobilier Productif Net": val_immo_p_gross - passif_productif,
-            "Revenu Annuel": flux["total_revenus"], "Charges (hors prêts)": flux["total_depenses"], 
+            "Revenu Annuel": flux["total_revenus"], "Charges (hors prêts)": total_depenses_annee,
             "Mensualités Prêts": mensualites_prets, "Impôt sur le Revenu": impot_annuel_final, 
             "Réduction Fiscale Annuelle": total_reduction_fiscale_annee, "Reste à Vivre": reste_a_vivre,
             "Cash-flow Vente": cash_flow_vente,
@@ -328,6 +336,12 @@ def generer_projection_complete(duree, stocks_df, revenus_df, depenses_df, prets
 
         charges_courantes_df['Montant Annuel'] *= inflation_factor
         sim_revenus_base.loc[~sim_revenus_base['Poste'].str.contains('Salaire', na=False), 'Montant Annuel'] *= inflation_factor
+        
+        # Appliquer l'inflation aux charges immobilières dans le dataframe du patrimoine
+        if 'Charges Annuelles (€)' in sim_patrimoine.columns:
+            sim_patrimoine['Charges Annuelles (€)'] *= inflation_factor
+        if 'Taxe Foncière Annuelle (€)' in sim_patrimoine.columns:
+            sim_patrimoine['Taxe Foncière Annuelle (€)'] *= inflation_factor
         
         for i, (_, adulte_sim) in enumerate(adultes_df_sim.iterrows()):
             est_retraite_annee_suivante = False
