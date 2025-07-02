@@ -14,7 +14,7 @@ if 'hyp_economiques' not in st.session_state:
 st.sidebar.title("Paramètres de Projection")
 duree_simulation = st.sidebar.slider("Durée de la simulation (années)", 1, 50, 25)
 
-with st.sidebar.expander("Hypothèses Économiques", expanded=True):
+with st.sidebar.expander("Hypothèses Économiques", expanded=False):
     # Ajout du slider pour le taux d'inflation
     inflation = st.slider(
         "Taux d'inflation annuel moyen (%)",
@@ -32,7 +32,7 @@ with st.sidebar.expander("Hypothèses Économiques", expanded=True):
 
 st.title("📈 Projection de l'Évolution des Flux et du Patrimoine")
 
-st.header("Paramètres Spécifiques à la Projection")
+#st.header("Paramètres Spécifiques à la Projection")
 
 st.subheader("Hypothèses de Retraite (Pensions Annuelles par Adulte)")
 
@@ -66,9 +66,16 @@ else:
     df_pensions_copy = st.session_state.df_pension_hypotheses.copy()
 
     for adult_name in adult_names:
-        st.markdown(f"##### Hypothèses de pension pour {adult_name}")
-        
         hypotheses_for_adult = df_pensions_copy[df_pensions_copy['Prénom Adulte'] == adult_name]
+        col_5, col_6 = st.columns([1, 1])
+        with col_5:
+            st.markdown(f"##### Hypothèses de pension pour {adult_name}")
+        with col_6:
+            if st.button(f"➕ Ajouter une hypothèse pour {adult_name}", key=f"add_pension_{adult_name}", use_container_width=True):
+                new_row = pd.DataFrame([{'Prénom Adulte': adult_name, 'Âge Départ Retraite': 65, 'Montant Pension Annuelle (€)': 0.0, 'Active': False, 'Année Départ Retraite': pd.NA}])
+                st.session_state.df_pension_hypotheses = pd.concat([st.session_state.df_pension_hypotheses, new_row], ignore_index=True)
+                st.rerun()
+
         if hypotheses_for_adult.empty:
             st.write("_Aucune hypothèse pour cet adulte._")
 
@@ -94,10 +101,6 @@ else:
                     'Active': is_active
                 })
 
-        if st.button(f"➕ Ajouter une hypothèse pour {adult_name}", key=f"add_pension_{adult_name}", use_container_width=True):
-            new_row = pd.DataFrame([{'Prénom Adulte': adult_name, 'Âge Départ Retraite': 65, 'Montant Pension Annuelle (€)': 0.0, 'Active': False, 'Année Départ Retraite': pd.NA}])
-            st.session_state.df_pension_hypotheses = pd.concat([st.session_state.df_pension_hypotheses, new_row], ignore_index=True)
-            st.rerun()
 
     if indices_to_delete_pensions:
         st.session_state.df_pension_hypotheses = st.session_state.df_pension_hypotheses.drop(indices_to_delete_pensions).reset_index(drop=True)

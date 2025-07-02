@@ -8,12 +8,23 @@ from utils.calculs import calculer_mensualite_pret
 
 st.title("💸 Suivi des Flux Financiers du Foyer")
 
+# --- Assurer l'existence des colonnes requises dans df_revenus ---
+if 'df_revenus' not in st.session_state:
+    st.session_state.df_revenus = pd.DataFrame(columns=['Poste', 'Montant Annuel', 'Prénom Adulte', 'Type'])
+
+required_cols = {'Prénom Adulte': None, 'Type': 'Autre'}
+for col, default_value in required_cols.items():
+    if col not in st.session_state.df_revenus.columns:
+        st.session_state.df_revenus[col] = default_value
+# Remplir les valeurs manquantes pour assurer la cohérence
+st.session_state.df_revenus['Type'] = st.session_state.df_revenus['Type'].fillna('Autre')
+
+
 col_depenses_input, col_revenus_input = st.columns(2)
 
 with col_depenses_input:
     st.subheader("Saisie des Dépenses Annuelles (hors prêts)")
 
-    # --- NOUVELLE LOGIQUE DE WIDGETS POUR LES DÉPENSES ---
     updated_depenses_data = []
     indices_to_delete_depenses = []
     df_depenses_copy = st.session_state.df_depenses.copy()
@@ -27,7 +38,7 @@ with col_depenses_input:
             with col2:
                 montant = st.number_input("Montant Annuel (€)", value=float(row.get('Montant Annuel', 0.0)), min_value=0.0, step=100.0, key=f"depense_montant_{i}", format="%.0f")
             with col3:
-                st.write("") # Espace pour aligner le bouton
+                st.write("") 
                 st.write("")
                 if st.button("🗑️ Supprimer", key=f"delete_depense_{i}", use_container_width=True):
                     indices_to_delete_depenses.append(i)
@@ -47,43 +58,91 @@ with col_depenses_input:
 
 with col_revenus_input:
     st.subheader("Saisie des Revenus Annuels")
-    # --- NOUVELLE LOGIQUE DE WIDGETS POUR LES REVENUS ---
-    updated_revenus_data = []
-    indices_to_delete_revenus = []
-    df_revenus_copy = st.session_state.df_revenus.copy()
 
-    for i, row in df_revenus_copy.iterrows():
+    # --- NOUVELLE LOGIQUE POUR LES SALAIRES PAR DÉFAUT ---
+    st.markdown("##### Salaires des adultes (non supprimables)")
+    
+    adult_names = st.session_state.df_adultes['Prénom'].tolist() if 'df_adultes' in st.session_state else []
+    
+    updated_salaries = []
+    
+    if not adult_names:
+        st.info("Ajoutez des adultes dans l'onglet 'Famille' pour saisir leurs salaires.")
+    
+    for adult_name in adult_names:
+        # Trouver le salaire existant ou en créer un nouveau
+        current_salary_row = st.session_state.df_revenus[
+            (st.session_state.df_revenus['Prénom Adulte'] == adult_name) & 
+            (st.session_state.df_revenus['Type'] == 'Salaire')
+        ]
+        
+        if not current_salary_row.empty:
+            current_salary = current_salary_row.iloc[0]['Montant Annuel']
+        else:
+            current_salary = 0.0
+        
+        new_salary = st.number_input(
+            f"Salaire Annuel de {adult_name}",
+            value=float(current_salary),
+            min_value=0.0,
+            step=1000.0,
+            key=f"salaire_{adult_name}",
+            format="%.0f"
+        )
+        
+        updated_salaries.append({
+            'Poste': f'Salaire {adult_name}', 
+            'Montant Annuel': new_salary, 
+            'Prénom Adulte': adult_name, 
+            'Type': 'Salaire'
+        })
+    
+    # Séparer les autres revenus (non-salaires)
+    df_autres_revenus = st.session_state.df_revenus[st.session_state.df_revenus['Type'] != 'Salaire'].copy()
+
+    st.markdown("##### Autres revenus (ajout/suppression possible)")
+    
+    updated_autres_revenus_data = []
+    indices_to_delete_autres_revenus = []
+    
+    for i, row in df_autres_revenus.iterrows():
         expander_title = row.get('Poste') if row.get('Poste') else f"Nouveau Revenu #{i+1}"
         with st.expander(expander_title, expanded=not row.get('Poste')):
             r_col1, r_col2, r_col3 = st.columns([3, 2, 1])
             with r_col1:
-                poste = st.text_input("Poste de revenu", value=row.get('Poste', ''), key=f"revenu_poste_{i}")
+                poste = st.text_input("Poste de revenu", value=row.get('Poste', ''), key=f"autre_revenu_poste_{i}")
             with r_col2:
-                montant = st.number_input("Montant Annuel (€)", value=float(row.get('Montant Annuel', 0.0)), min_value=0.0, step=100.0, key=f"revenu_montant_{i}", format="%.0f")
+                montant = st.number_input("Montant Annuel (€)", value=float(row.get('Montant Annuel', 0.0)), min_value=0.0, step=100.0, key=f"autre_revenu_montant_{i}", format="%.0f")
             with r_col3:
-                st.write("") # Espace pour aligner le bouton
                 st.write("")
-                if st.button("🗑️ Supprimer", key=f"delete_revenu_{i}", use_container_width=True):
-                    indices_to_delete_revenus.append(i)
+                st.write("")
+                if st.button("🗑️ Supprimer", key=f"delete_autre_revenu_{i}", use_container_width=True):
+                    indices_to_delete_autres_revenus.append(i)
             
-            updated_revenus_data.append({'Poste': poste, 'Montant Annuel': montant})
+            updated_autres_revenus_data.append({'Poste': poste, 'Montant Annuel': montant, 'Prénom Adulte': None, 'Type': 'Autre'})
 
-    if indices_to_delete_revenus:
-        st.session_state.df_revenus = st.session_state.df_revenus.drop(indices_to_delete_revenus).reset_index(drop=True)
+    if indices_to_delete_autres_revenus:
+        st.session_state.df_revenus = st.session_state.df_revenus.drop(indices_to_delete_autres_revenus).reset_index(drop=True)
         st.rerun()
 
-    st.session_state.df_revenus = pd.DataFrame(updated_revenus_data)
+    df_autres_revenus_edited = pd.DataFrame(updated_autres_revenus_data)
 
-    if st.button("➕ Ajouter un Revenu", key="add_revenu", use_container_width=True):
-        new_row = pd.DataFrame([{'Poste': '', 'Montant Annuel': 0.0}])
-        st.session_state.df_revenus = pd.concat([st.session_state.df_revenus, new_row], ignore_index=True)
-        st.rerun()
+    if st.button("➕ Ajouter un Autre Revenu", key="add_autre_revenu", use_container_width=True):
+        new_row = pd.DataFrame([{'Poste': '', 'Montant Annuel': 0.0, 'Prénom Adulte': None, 'Type': 'Autre'}])
+        # Concaténer à la version en cours d'édition pour une mise à jour immédiate
+        df_autres_revenus_edited = pd.concat([df_autres_revenus_edited, new_row], ignore_index=True)
+
+
+    # --- Reconstitution du DataFrame de revenus complet ---
+    df_salaries = pd.DataFrame(updated_salaries)
+    st.session_state.df_revenus = pd.concat([df_salaries, df_autres_revenus_edited], ignore_index=True)
+
 
 st.divider()
 
-# --- Calculs préparatoires pour les récapitulatifs ---
+# --- Le reste du fichier pour les calculs et graphiques reste inchangé ---
 
-# Dépenses
+# Calculs préparatoires pour les récapitulatifs
 df_prets_pour_calcul = st.session_state.df_prets.copy()
 if 'Assurance Emprunteur %' not in df_prets_pour_calcul.columns:
     df_prets_pour_calcul['Assurance Emprunteur %'] = 0
@@ -132,11 +191,9 @@ df_revenus_affiches = pd.concat([df_revenus_affiches, df_revenus_courants], igno
 st.divider()
 
 total_revenus = df_revenus_affiches['Montant Annuel'].sum()
-total_depenses_courantes_saisies = st.session_state.df_depenses['Montant Annuel'].sum() # Renommé pour clarté
+total_depenses_courantes_saisies = st.session_state.df_depenses['Montant Annuel'].sum() 
 total_depenses_globales = total_depenses_courantes_saisies + total_mensualites_prets_actuelles + total_charges_annuelles_immo + total_taxe_fonciere_annuelle_immo
-
 reste_a_vivre_annuel = total_revenus - total_depenses_globales
-
 
 with st.expander("Bilan Annuel et Répartition", expanded=True):
     st.subheader("Bilan Annuel Actuel")
@@ -145,7 +202,6 @@ with st.expander("Bilan Annuel et Répartition", expanded=True):
     col_met2.metric("Total Dépenses", f"{total_depenses_globales:,.0f} €", help=f"Dépenses saisies: {total_depenses_courantes_saisies:,.0f} € | Prêts: {total_mensualites_prets_actuelles:,.0f} € | Charges Immo: {total_charges_annuelles_immo:,.0f} € | Taxe Foncière: {total_taxe_fonciere_annuelle_immo:,.0f} €")
     col_met3.metric("Reste à Vivre Annuel", f"{reste_a_vivre_annuel:,.0f} €")
 
-    # Déplacé ici pour être dans le même expander
     col_recap_dep_annuel, col_recap_rev_annuel = st.columns(2)
     with col_recap_dep_annuel:
         st.subheader("Récapitulatif Complet des Dépenses")
@@ -192,7 +248,7 @@ with st.expander("Bilan Mensuel et Répartition", expanded=False):
     col_met_m3.metric("Reste à Vivre Mensuel", f"{reste_a_vivre_mensuel:,.0f} €")
 
     st.subheader("Répartition Graphique Mensualisée")
-    if not treemap_data.empty: # treemap_data est déjà calculé pour l'annuel
+    if not treemap_data.empty: 
         treemap_data_mensuel = treemap_data.copy()
         treemap_data_mensuel['Montant Mensuel'] = np.ceil(treemap_data_mensuel['Montant Annuel'] / 12).astype(int)
 
